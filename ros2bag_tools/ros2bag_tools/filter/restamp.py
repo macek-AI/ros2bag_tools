@@ -23,6 +23,7 @@ from ros2bag_tools.logging import warn_once
 from ros2bag_tools.reader import TopicDeserializer
 
 from tf2_msgs.msg import TFMessage
+from visualization_msgs.msg import MarkerArray
 
 
 def nanoseconds_duration(data: str):
@@ -40,6 +41,9 @@ def set_header_stamp(msg, t: int):
     elif isinstance(msg, TFMessage):
         for transform in msg.transforms:
             transform.header.stamp = t_ros.to_msg()
+    elif isinstance(msg, MarkerArray) and msg.markers:
+        for marker in msg.markers:
+            marker.header.stamp = t_ros.to_msg()
     return msg
 
 
@@ -50,6 +54,11 @@ def t_from_header(msg):
     elif isinstance(msg, TFMessage):
         times = [Time.from_msg(
             transform.header.stamp).nanoseconds for transform in msg.transforms]
+        if len(times) > 0:
+            return min(times)
+    elif isinstance(msg, MarkerArray) and msg.markers:
+        times = [Time.from_msg(
+            marker.header.stamp).nanoseconds for marker in msg.markers]
         if len(times) > 0:
             return min(times)
     return None
@@ -101,6 +110,11 @@ class RestampFilter(FilterExtension):
                 t_header = Time.from_msg(transform.header.stamp)
                 t_header += self._offset
                 transform.header.stamp = t_header.to_msg()
+        elif isinstance(msg, MarkerArray) and msg.markers:
+            for marker in msg.markers:
+                t_header = Time.from_msg(marker.header.stamp)
+                t_header += self._offset
+                marker.header.stamp = t_header.to_msg()
         return msg
 
     def filter_msg(self, serialized_msg):
