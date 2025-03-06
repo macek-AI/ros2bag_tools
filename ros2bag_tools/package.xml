@@ -27,6 +27,9 @@
   <!-- for special handling of TF messages in restamping and cut -->
   <depend>tf2_msgs</depend>
 
+  <!-- for special handling of MarkerArray messages in restamping -->
+  <depend>visualization_msgs</depend>
+
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
   <test_depend>ament_pep257</test_depend>
