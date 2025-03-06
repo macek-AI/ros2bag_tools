@@ -18,7 +18,7 @@ from rclpy.serialization import serialize_message
 from rclpy.time import Duration
 from rclpy.time import Time
 
-from ros2bag_tools.filter import FilterExtension
+from ros2bag_tools.filter import FilterExtension, FilterResult
 from ros2bag_tools.logging import warn_once
 from ros2bag_tools.reader import TopicDeserializer
 
@@ -69,6 +69,8 @@ class RestampFilter(FilterExtension):
     def __init__(self):
         super().__init__()
         self._deserializer = TopicDeserializer()
+        self._delayed_msgs = []
+        self._min_valid_time = None
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -130,6 +132,15 @@ class RestampFilter(FilterExtension):
                           f'{topic} has no header, using bag timestamp instead')
             else:
                 t = new_t
+                if new_t > 0:
+                    if self._min_valid_time is None or new_t < self._min_valid_time:
+                        self._min_valid_time = new_t
+                else:
+                    if isinstance(msg, TFMessage):
+                        warn_once(self._logger,
+                                f"Delaying message from {topic} with timestamp {new_t}.")
+                        self._delayed_msgs.append((topic, msg, data, t))
+                    return FilterResult.DROP_MESSAGE
 
         if topic in self._offset_topics:
             t += self._offset.nanoseconds
@@ -138,4 +149,32 @@ class RestampFilter(FilterExtension):
             msg = self._add_header_offset(msg)
 
         data = serialize_message(msg)
-        return (topic, data, t)
+
+        if len(self._delayed_msgs) == 0:
+            return (topic, data, t)
+        else:
+            delayed_messages = self._process_delayed_messages()
+            return [(topic, data, t)] + delayed_messages
+
+    def _process_delayed_messages(self):
+        if self._min_valid_time is None:
+            return []
+
+        processed_msgs = []
+        for topic, msg, data, t in self._delayed_msgs:
+            warn_once(self._logger,
+                      f"Assigning minimum valid timestamp {self._min_valid_time} to {topic} message.")
+            new_t = self._min_valid_time
+
+            if topic in self._offset_topics:
+                new_t += self._offset.nanoseconds
+
+            if self._offset_header and topic in self._offset_topics:
+                msg = self._add_header_offset(msg)
+
+            data = serialize_message(msg)
+            processed_msgs.append((topic, data, new_t))
+
+        self._delayed_msgs = []
+
+        return processed_msgs
